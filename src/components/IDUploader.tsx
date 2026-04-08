@@ -9,7 +9,12 @@ interface IDUploaderProps {
   onClear: () => void;
 }
 
-export function IDUploader({ label, onFileSelect, preview, onClear }: IDUploaderProps) {
+export function IDUploader({
+  label,
+  onFileSelect,
+  preview,
+  onClear,
+}: IDUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -22,7 +27,7 @@ export function IDUploader({ label, onFileSelect, preview, onClear }: IDUploader
         onFileSelect(file);
       }
     },
-    [onFileSelect]
+    [onFileSelect],
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,8 +38,14 @@ export function IDUploader({ label, onFileSelect, preview, onClear }: IDUploader
   if (preview) {
     return (
       <div className="relative rounded-lg overflow-hidden border-2 border-primary/20 bg-card">
-        <p className="text-xs font-medium text-muted-foreground px-4 pt-3 uppercase tracking-wider">{label}</p>
-        <img src={preview} alt={label} className="w-full h-auto max-h-[350px] object-contain mx-auto block p-4" />
+        <p className="text-xs font-medium text-muted-foreground px-4 pt-3 uppercase tracking-wider">
+          {label}
+        </p>
+        <img
+          src={preview}
+          alt={label}
+          className="w-full h-auto max-h-[350px] object-contain mx-auto block p-4"
+        />
         <button
           onClick={onClear}
           className="absolute top-3 right-3 rounded-full bg-foreground/80 p-1.5 transition-colors hover:bg-destructive"
@@ -47,7 +58,10 @@ export function IDUploader({ label, onFileSelect, preview, onClear }: IDUploader
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
       onClick={() => inputRef.current?.click()}
@@ -55,7 +69,7 @@ export function IDUploader({ label, onFileSelect, preview, onClear }: IDUploader
         "flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-all duration-200",
         isDragging
           ? "border-primary bg-primary/5 scale-[1.02]"
-          : "border-border hover:border-primary/50 hover:bg-muted/50"
+          : "border-border hover:border-primary/50 hover:bg-muted/50",
       )}
     >
       <div className="rounded-full bg-primary/10 p-3">

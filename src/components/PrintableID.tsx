@@ -1,12 +1,13 @@
 import { useRef, useEffect, useState } from "react";
-import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Printer } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Printer, Download } from "lucide-react";
 import type { ExtractedData } from "@/lib/ocr";
-import  {  toGregorian,  toEthiopian  }  from  'ethiopian-calendar-new';
-import { Label } from "./ui/label";
-
+import { toGregorian, toEthiopian } from "ethiopian-calendar-new";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface PrintableIDProps {
   data: ExtractedData;
@@ -35,12 +36,11 @@ function ethiopianToGregorian(ethDate) {
     "Nov",
     "Dec",
   ];
-    // Add leading zero to day if less than 10
+  // Add leading zero to day if less than 10
   const formattedDay = String(day).padStart(2, "0");
 
   return `${year}/${months[month - 1]}/${formattedDay}`;
 }
-
 
 function drawTextOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -51,7 +51,7 @@ function drawTextOnCanvas(
   canvasH: number,
   fontSize: number = 14,
   color: string = "#1a1a1a",
-  font: string = "sans-serif"
+  font: string = "sans-serif",
 ) {
   if (!text) return;
   ctx.font = `${fontSize}px ${font}`;
@@ -67,10 +67,13 @@ function drawImageOnCanvas(
   wPct: number,
   hPct: number,
   canvasW: number,
-  canvasH: number
+  canvasH: number,
 ): Promise<void> {
   return new Promise((resolve) => {
-    if (!imgSrc) { resolve(); return; }
+    if (!imgSrc) {
+      resolve();
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(
@@ -78,7 +81,7 @@ function drawImageOnCanvas(
         canvasW * xPct,
         canvasH * yPct,
         canvasW * wPct,
-        canvasH * hPct
+        canvasH * hPct,
       );
       resolve();
     };
@@ -108,6 +111,7 @@ export function PrintableID({ data }: PrintableIDProps) {
   const [ready, setReady] = useState(false);
   const [useColorPhoto, setUseColorPhoto] = useState(false);
   const hasColorProfile = !!data.profile_image_color;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -214,40 +218,17 @@ export function PrintableID({ data }: PrintableIDProps) {
 
       // FAN Number - bottom area
 
-      // Profile photo - top left area
-      // await drawImageOnCanvas(
-      //   ctx,
-      //   data.profile_image,
-      //   0.023,
-      //   0.26,
-      //   0.159,
-      //   0.66,
-      //   w,
-      //   h,
-      // );
-
-      // Profile photos - use color version if toggled and available
+      // Profile photo - use color or grayscale based on toggle
       const profileSrc =
-        useColorPhoto && hasColorProfile
+        useColorPhoto && data.profile_image_color
           ? data.profile_image_color
           : data.profile_image;
+
+      // Profile photo - top left area
       await drawImageOnCanvas(ctx, profileSrc, 0.023, 0.26, 0.159, 0.66, w, h);
-      await drawImageOnCanvas(ctx, profileSrc, 0.389,
-        0.72,
-        0.056,
-        0.23, w, h);
 
       // Small Profile photo - bottom left area
-      // await drawImageOnCanvas(
-      //   ctx,
-      //   data.profile_image,
-      //   0.389,
-      //   0.72,
-      //   0.056,
-      //   0.23,
-      //   w,
-      //   h,
-      // );
+      await drawImageOnCanvas(ctx, profileSrc, 0.389, 0.72, 0.056, 0.23, w, h);
 
       const spacedFan = data.fan_number
         ? data.fan_number.split("").join(" ")
@@ -455,17 +436,80 @@ export function PrintableID({ data }: PrintableIDProps) {
       setReady(true);
     };
     templateImg.src = TEMPLATE_URL;
-  }, [data, useColorPhoto, hasColorProfile]);
+  }, [data, useColorPhoto]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dataUrl = canvas.toDataURL("image/png");
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to print.");
+        return;
+      }
 
-    printWindow.document.write(`
+      // Check if user is admin
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      const isAdmin = !!roleData;
+
+      if (!isAdmin) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("wallet_balance, total_downloads")
+          .eq("user_id", user.id)
+          .single();
+
+        if (!profile || profile.wallet_balance < 1) {
+          toast.error("Insufficient credits. Please top up your wallet.");
+          return;
+        }
+
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({
+            wallet_balance: profile.wallet_balance - 1,
+            total_downloads: (profile.total_downloads ?? 0) + 1,
+          })
+          .eq("user_id", user.id);
+
+        if (updateError) {
+          toast.error("Failed to process print.");
+          console.error(updateError);
+          return;
+        }
+      } else {
+        // Admin: just increment total_downloads
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("total_downloads")
+          .eq("user_id", user.id)
+          .single();
+        if (profile) {
+          await supabase
+            .from("profiles")
+            .update({ total_downloads: (profile.total_downloads ?? 0) + 1 })
+            .eq("user_id", user.id);
+        }
+      }
+
+      await supabase.from("downloads").insert({
+        user_id: user.id,
+        file_name: "fayda-id-card-print.png",
+      });
+
+      const dataUrl = canvas.toDataURL("image/png");
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) return;
+
+      printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -484,16 +528,93 @@ export function PrintableID({ data }: PrintableIDProps) {
         </body>
       </html>
     `);
-    printWindow.document.close();
+      printWindow.document.close();
+
+      toast.success(isAdmin ? "Printing!" : "Printing! 1 credit deducted.");
+    } catch (err) {
+      console.error("Failed to print:", err);
+      toast.error("Print failed.");
+    }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const link = document.createElement("a");
-    link.download = "fayda-id-card.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to download.");
+        return;
+      }
+
+      // Check if user is admin
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      const isAdmin = !!roleData;
+
+      if (!isAdmin) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("wallet_balance, total_downloads")
+          .eq("user_id", user.id)
+          .single();
+
+        if (!profile || profile.wallet_balance < 1) {
+          toast.error("Insufficient credits. Please top up your wallet.");
+          return;
+        }
+
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({
+            wallet_balance: profile.wallet_balance - 1,
+            total_downloads: (profile.total_downloads ?? 0) + 1,
+          })
+          .eq("user_id", user.id);
+
+        if (updateError) {
+          toast.error("Failed to process download.");
+          console.error(updateError);
+          return;
+        }
+      } else {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("total_downloads")
+          .eq("user_id", user.id)
+          .single();
+        if (profile) {
+          await supabase
+            .from("profiles")
+            .update({ total_downloads: (profile.total_downloads ?? 0) + 1 })
+            .eq("user_id", user.id);
+        }
+      }
+
+      // Track download
+      await supabase.from("downloads").insert({
+        user_id: user.id,
+        file_name: "fayda-id-card.png",
+      });
+
+      // Trigger actual download
+      const link = document.createElement("a");
+      link.download = "fayda-id-card.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      toast.success(isAdmin ? "Downloaded!" : "Downloaded! 1 credit deducted.");
+    } catch (err) {
+      console.error("Failed to download:", err);
+      toast.error("Download failed.");
+    }
   };
 
   return (
@@ -503,20 +624,23 @@ export function PrintableID({ data }: PrintableIDProps) {
           <Printer className="h-5 w-5 text-primary" />
           Printable ID Card
         </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
         {hasColorProfile && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-2">
             <Switch
               id="color-toggle"
               checked={useColorPhoto}
               onCheckedChange={setUseColorPhoto}
             />
-            <Label htmlFor="color-toggle" className="text-sm cursor-pointer">
-              {useColorPhoto ? "Color photo" : "Grayscale photo"}
+            <Label
+              htmlFor="color-toggle"
+              className="text-xs text-muted-foreground cursor-pointer"
+            >
+              {useColorPhoto ? "Color Photo" : "Grayscale Photo"}
             </Label>
           </div>
         )}
+      </CardHeader>
+      <CardContent className="space-y-3">
         <div className="rounded-md border border-border overflow-hidden bg-muted/30">
           <canvas ref={canvasRef} className="w-full h-auto block" />
         </div>
