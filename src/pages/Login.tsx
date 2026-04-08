@@ -83,7 +83,7 @@ const Login = () => {
               )}
             </Button>
           </form>
-          <div className="mt-3 text-center">
+          <div className="mt-3 text-center hidden">
             <Link
               to="/forgot-password"
               className="text-sm text-primary hover:underline"
@@ -96,6 +96,14 @@ const Login = () => {
             <Link to="/register" className="text-primary hover:underline">
               Register
             </Link>
+            <div className="mt-3 text-center">
+              <Link
+                to="/"
+                className="text-sm text-primary hover:underline"
+              >
+                Back to home
+              </Link>
+            </div>
           </p>
         </CardContent>
       </Card>

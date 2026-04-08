@@ -110,6 +110,15 @@ const Register = () => {
               Sign In
             </Link>
           </p>
+
+          <div className="mt-3 text-center">
+            <Link
+              to="/"
+              className="text-sm text-primary hover:underline"
+            >
+              Back to home
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>
