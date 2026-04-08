@@ -7,7 +7,15 @@ import { IDUploader } from "@/components/IDUploader";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { extractIDData, type ExtractedData } from "@/lib/ocr";
 import { useAuth } from "@/contexts/AuthContext";
-import { ScanLine, Loader2, FileText, Shield, LogIn, LogOut, LayoutDashboard } from "lucide-react";
+import {
+  ScanLine,
+  Loader2,
+  FileText,
+  Shield,
+  LogIn,
+  LogOut,
+  LayoutDashboard,
+} from "lucide-react";
 
 const Index = () => {
   const { user, signOut, loading: authLoading } = useAuth();
@@ -68,10 +76,15 @@ const Index = () => {
     setProgress(0);
     setStatus("Starting...");
     try {
-      const data = await extractIDData(frontFile, backFile, colorFile, (p, s) => {
-        setProgress(p);
-        setStatus(s);
-      });
+      const data = await extractIDData(
+        frontFile,
+        backFile,
+        colorFile,
+        (p, s) => {
+          setProgress(p);
+          setStatus(s);
+        },
+      );
       setResult(data);
     } catch (err) {
       console.error("Extraction failed:", err);
@@ -99,7 +112,9 @@ const Index = () => {
               <h1 className="text-xl font-bold text-foreground tracking-tight">
                 Fayda ID Extractor
               </h1>
-              <p className="text-xs text-muted-foreground">Ethiopian Digital ID · OCR</p>
+              <p className="text-xs text-muted-foreground">
+                Ethiopian Digital ID · OCR
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -109,11 +124,21 @@ const Index = () => {
             </div>
             {isLoggedIn ? (
               <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/dashboard")}
+                  className="gap-1.5"
+                >
                   <LayoutDashboard className="h-4 w-4" />
                   Dashboard
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleSignOut} className="gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="gap-1.5"
+                >
                   <LogOut className="h-4 w-4" />
                   Sign Out
                 </Button>
@@ -135,10 +160,20 @@ const Index = () => {
           <div className="mb-6 rounded-lg border border-border bg-muted/40 p-4 text-center">
             <p className="text-sm text-muted-foreground">
               Please{" "}
-              <Link to="/login" className="text-primary hover:underline font-medium">sign in</Link>
-              {" "}or{" "}
-              <Link to="/register" className="text-primary hover:underline font-medium">register</Link>
-              {" "}to use the ID extractor.
+              <Link
+                to="/login"
+                className="text-primary hover:underline font-medium"
+              >
+                sign in
+              </Link>{" "}
+              or{" "}
+              <Link
+                to="/register"
+                className="text-primary hover:underline font-medium"
+              >
+                register
+              </Link>{" "}
+              to use the ID extractor.
             </p>
           </div>
         )}
@@ -183,14 +218,18 @@ const Index = () => {
                       ) : (
                         <ScanLine className="h-4 w-4" />
                       )}
-                      {extracting ? "Extracting..." : `Extract Data${backFile ? " (Both Sides)" : " (Front Only)"}`}
+                      {extracting
+                        ? "Extracting..."
+                        : `Extract Data${backFile ? " (Both Sides)" : " (Front Only)"}`}
                     </Button>
 
                     {extracting && (
                       <Card>
                         <CardContent className="pt-4 pb-4 space-y-2">
                           <Progress value={progress} className="h-2" />
-                          <p className="text-xs text-muted-foreground text-center">{status}</p>
+                          <p className="text-xs text-muted-foreground text-center">
+                            {status}
+                          </p>
                         </CardContent>
                       </Card>
                     )}
@@ -199,15 +238,27 @@ const Index = () => {
 
                 {!frontFile && (
                   <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
-                    <h3 className="text-sm font-semibold text-foreground mb-2">How it works</h3>
+                    <h3 className="text-sm font-semibold text-foreground mb-2">
+                      How it works
+                    </h3>
                     <ol className="space-y-1.5 text-xs text-muted-foreground list-decimal list-inside">
-                      <li>Upload the front side and back side of your Ethiopian Fayda ID card</li>
-                      <li>Upload the color version for colored profile photo</li>
+                      <li>
+                        Upload the front side of your Ethiopian Fayda ID card
+                      </li>
+                      <li>
+                        Optionally upload the back side for QR code, phone &
+                        address
+                      </li>
+                      <li>
+                        Optionally upload the color version for colored profile
+                        photo & QR
+                      </li>
                       <li>Click "Extract Data" to run OCR analysis</li>
                       <li>View all extracted fields, photos, and codes</li>
                     </ol>
                     <p className="mt-3 text-xs text-muted-foreground">
-                      ✦ All processing happens in your browser — nothing is uploaded to any server.
+                      ✦ All processing happens in your browser — nothing is
+                      uploaded to any server.
                     </p>
                   </div>
                 )}

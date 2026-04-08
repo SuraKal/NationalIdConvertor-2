@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { FileText, Download, LogOut, ScanLine, Wallet, TrendingDown } from "lucide-react";
+import { FileText, Download, LogOut, ScanLine, Wallet, Shield } from "lucide-react";
+import WalletTopUp from "@/components/WalletTopUp";
 
 const Dashboard = () => {
   const { user, signOut, loading } = useAuth();
@@ -13,6 +14,7 @@ const Dashboard = () => {
   const [walletBalance, setWalletBalance] = useState(0);
   const [totalDownloads, setTotalDownloads] = useState(0);
   const [profileName, setProfileName] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -24,7 +26,7 @@ const Dashboard = () => {
     if (!user) return;
 
     const fetchData = async () => {
-      const [{ count }, { data: profile }] = await Promise.all([
+      const [{ count }, { data: profile }, { data: roleData }] = await Promise.all([
         supabase
           .from("downloads")
           .select("*", { count: "exact", head: true })
@@ -34,11 +36,18 @@ const Dashboard = () => {
           .select("name, wallet_balance, total_downloads")
           .eq("user_id", user.id)
           .single(),
+        supabase
+          .from("user_roles" as any)
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .maybeSingle(),
       ]);
       setDownloadCount(count ?? 0);
       setWalletBalance(profile?.wallet_balance ?? 0);
       setTotalDownloads(profile?.total_downloads ?? 0);
       setProfileName(profile?.name || user.user_metadata?.name || "User");
+      setIsAdmin(!!roleData);
     };
 
     fetchData();
@@ -113,11 +122,23 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        <div className="mt-8">
+        {!isAdmin && (
+          <div className="mt-8 max-w-3xl">
+            <WalletTopUp />
+          </div>
+        )}
+
+        <div className="mt-8 flex gap-3">
           <Button onClick={() => navigate("/")} className="gap-2">
             <ScanLine className="h-4 w-4" />
             Go to ID Extractor
           </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={() => navigate("/admin")} className="gap-2">
+              <Shield className="h-4 w-4" />
+              Admin Panel
+            </Button>
+          )}
         </div>
       </main>
     </div>
