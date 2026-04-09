@@ -366,7 +366,25 @@ export function PrintableID({ data }: PrintableIDProps) {
         h,
       );
 
-      // FIN Number - bottom of back side
+      drawTextOnCanvasBold(
+        // ctx,
+        // data.fin_number,
+        // 0.6,
+        // 0.87,
+        // w,
+        // h,
+        // Math.round(h * 0.04),
+
+        ctx,
+        data.fin_number,
+        0.6,
+        0.868,
+        w,
+        h,
+        Math.round(h * 0.0444),
+        color,
+      );
+      
       // drawTextOnCanvas(
       //   ctx,
       //   data.fin_number,
@@ -523,7 +541,7 @@ export function PrintableID({ data }: PrintableIDProps) {
         <body>
           <img src="${dataUrl}" />
           <script>
-            window.onload = function() { window.print(); window.close(); };
+            window.onload = function() { window.print();};
           </script>
         </body>
       </html>
@@ -622,7 +640,7 @@ export function PrintableID({ data }: PrintableIDProps) {
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Printer className="h-5 w-5 text-primary" />
-          Printable ID Card
+          Printable ID Card (Check the information and add manually below if incorrect value is detected)
         </CardTitle>
         {hasColorProfile && (
           <div className="flex items-center gap-2 mt-2">

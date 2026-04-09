@@ -199,7 +199,7 @@ const Index = () => {
                 </div>
 
                 <IDUploader
-                  label="Color ID Card (Optional · for colored photo & QR)"
+                  label="Color ID Card (Optional · for colored photo)"
                   onFileSelect={handleColorSelect}
                   preview={colorPreview}
                   onClear={handleClearColor}
