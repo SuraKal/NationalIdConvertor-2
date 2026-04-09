@@ -260,16 +260,6 @@ export function ResultsPanel({ data, onDataChange }: ResultsPanelProps) {
           maxH="max-h-48"
           onReplace={(dataUrl) => update("qr_code_image", dataUrl)}
         />
-        {data.qr_code_image_color && (
-          <EditableImageCard
-            label="QR Code (Color)"
-            icon={<QrCode className="h-4 w-4" />}
-            src={data.qr_code_image_color}
-            alt="QR Code Color"
-            maxH="max-h-48"
-            onReplace={(dataUrl) => update("qr_code_image_color", dataUrl)}
-          />
-        )}
       </div>
 
       <Card>
