@@ -85,6 +85,7 @@ export function IDUploader({
       <input
         ref={inputRef}
         type="file"
+        placeholder="Drop image"
         accept=".jpg,.jpeg,.png"
         onChange={handleChange}
         className="hidden"
