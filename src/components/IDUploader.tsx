@@ -48,6 +48,7 @@ export function IDUploader({
         />
         <button
           onClick={onClear}
+          title="Remove"
           className="absolute top-3 right-3 rounded-full bg-foreground/80 p-1.5 transition-colors hover:bg-destructive"
         >
           <X className="h-4 w-4 text-primary-foreground" />
