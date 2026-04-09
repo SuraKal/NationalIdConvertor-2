@@ -262,16 +262,6 @@ export function ResultsPanel({ data, onDataChange }: ResultsPanelProps) {
         />
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Raw JSON Output</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="rounded-md bg-foreground/5 p-3 text-xs overflow-auto max-h-64 text-foreground font-mono">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </CardContent>
-      </Card>
     </div>
   );
 }
