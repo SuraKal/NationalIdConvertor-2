@@ -36,7 +36,7 @@ export interface ExtractedData {
 }
 
 /* =========================
-   GLOBAL WORKER (FIXED)
+   GLOBAL WORKER (FIXED + FAST)
 ========================= */
 
 let worker: Tesseract.Worker | null = null;
@@ -92,8 +92,20 @@ function extractRegionCanvas(
   return canvas;
 }
 
+function extractRegion(
+  img: HTMLImageElement,
+  xRatio: number,
+  yRatio: number,
+  wRatio: number,
+  hRatio: number,
+): string {
+  return extractRegionCanvas(img, xRatio, yRatio, wRatio, hRatio).toDataURL(
+    "image/png",
+  );
+}
+
 /* =========================
-   PREPROCESSING
+   PREPROCESSING (STRONG)
 ========================= */
 
 function preprocess(canvas: HTMLCanvasElement, strong = false) {
@@ -102,8 +114,7 @@ function preprocess(canvas: HTMLCanvasElement, strong = false) {
   const d = img.data;
 
   for (let i = 0; i < d.length; i += 4) {
-    let gray =
-      0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
 
     if (strong) {
       gray = gray > 140 ? 255 : 0;
@@ -132,13 +143,10 @@ function clean(text: string) {
 }
 
 /* =========================
-   OCR ENGINE (FIXED)
+   OCR ENGINE (MULTI PASS)
 ========================= */
 
-async function runOCR(
-  canvas: HTMLCanvasElement,
-  type: "text" | "number"
-) {
+async function runOCR(canvas: HTMLCanvasElement, type: "text" | "number") {
   const w = await getWorker();
 
   await w.setParameters(
@@ -147,7 +155,7 @@ async function runOCR(
       : {
           tessedit_char_whitelist:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz አ-ፐ",
-        }
+        },
   );
 
   let result = await w.recognize(preprocess(canvas, false));
@@ -176,14 +184,15 @@ function findAllDates(text: string): string[] {
 }
 
 /* =========================
-   FRONT SIDE
+   FRONT SIDE (IMPROVED)
 ========================= */
 
-export async function extractFrontSide(
-  imageFile: File,
-  result: ExtractedData,
-) {
+export async function extractFrontSide(imageFile: File, result: ExtractedData) {
   const img = await loadImage(imageFile);
+
+  // KEEP your original extractions
+  result.profile_image = extractRegion(img, 0.31, 0.26, 0.359, 0.2);
+  result.barcode_image = extractRegion(img, 0.318, 0.692, 0.32, 0.024);
 
   const mainCanvas = extractRegionCanvas(img, 0, 0.53, 0.82, 0.4);
   const verticalCanvas = extractRegionCanvas(img, 0.83, 0.05, 0.17, 0.9);
@@ -193,10 +202,12 @@ export async function extractFrontSide(
     runOCR(verticalCanvas, "number"),
   ]);
 
-  const lines = mainText.split("\n").map(l => l.trim()).filter(Boolean);
+  const lines = mainText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   for (const line of lines) {
-
     if (
       /[\u1200-\u137F]/.test(line) &&
       !/\d/.test(line) &&
@@ -206,10 +217,7 @@ export async function extractFrontSide(
       continue;
     }
 
-    if (
-      /^[A-Za-z\s.'-]+$/.test(line) &&
-      !result.full_name_english
-    ) {
+    if (/^[A-Za-z\s.'-]+$/.test(line) && !result.full_name_english) {
       result.full_name_english = line;
       continue;
     }
@@ -241,5 +249,42 @@ export async function extractFrontSide(
   const issueDates = findAllDates(verticalText);
   if (issueDates.length) {
     result.date_of_issue_gregorian = issueDates[0];
+  }
+}
+
+/* =========================
+   BACK SIDE (IMPROVED)
+========================= */
+
+export async function extractBackSide(imageFile: File, result: ExtractedData) {
+  const img = await loadImage(imageFile);
+
+  const textCanvas = extractRegionCanvas(img, 0, 0.58, 1.0, 0.42);
+  const text = await runOCR(textCanvas, "text");
+
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const phoneMatch = line.replace(/\s/g, "").match(/(\+251|251|09|07)\d{8}/);
+
+    if (phoneMatch && !result.phone_number) {
+      result.phone_number = phoneMatch[0];
+    }
+
+    if (
+      (line.toLowerCase().includes("ethiopian") || line.includes("ኢትዮጵያ")) &&
+      !result.nationality
+    ) {
+      result.nationality = "Ethiopian";
+      result.nationality_amharic = "ኢትዮጵያዊ";
+    }
+
+    const fin = findFAN(line);
+    if (fin && !result.fin_number) {
+      result.fin_number = fin;
+    }
   }
 }
