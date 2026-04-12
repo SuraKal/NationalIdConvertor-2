@@ -14,6 +14,7 @@ export interface ExtractedData {
   date_of_expiry_gregorian: string;
   fan_number: string;
   profile_image: string;
+  profile_image_color: string;
   barcode_image: string;
   barcode_value: string;
   // Back side
@@ -47,7 +48,10 @@ function preprocessForOCR(canvas: HTMLCanvasElement): HTMLCanvasElement {
 
 function extractRegion(
   img: HTMLImageElement,
-  xRatio: number, yRatio: number, wRatio: number, hRatio: number
+  xRatio: number,
+  yRatio: number,
+  wRatio: number,
+  hRatio: number,
 ): string {
   const canvas = document.createElement("canvas");
   const x = Math.floor(img.naturalWidth * xRatio);
@@ -63,7 +67,10 @@ function extractRegion(
 
 function extractRegionCanvas(
   img: HTMLImageElement,
-  xRatio: number, yRatio: number, wRatio: number, hRatio: number
+  xRatio: number,
+  yRatio: number,
+  wRatio: number,
+  hRatio: number,
 ): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   const x = Math.floor(img.naturalWidth * xRatio);
@@ -78,7 +85,10 @@ function extractRegionCanvas(
 
 function extractAndRotateRegionCW(
   img: HTMLImageElement,
-  xRatio: number, yRatio: number, wRatio: number, hRatio: number
+  xRatio: number,
+  yRatio: number,
+  wRatio: number,
+  hRatio: number,
 ): HTMLCanvasElement {
   const x = Math.floor(img.naturalWidth * xRatio);
   const y = Math.floor(img.naturalHeight * yRatio);
@@ -114,7 +124,10 @@ function findAllDates(text: string): string[] {
     const m = text.match(p);
     if (m) {
       for (const d of m) {
-        if (!seen.has(d)) { seen.add(d); dates.push(d); }
+        if (!seen.has(d)) {
+          seen.add(d);
+          dates.push(d);
+        }
       }
     }
   }
@@ -156,7 +169,12 @@ function classifyDate(date: string): "ethiopian" | "gregorian" {
   return "ethiopian";
 }
 
-function assignDates(dates: string[], ethField: string, gregField: string, result: ExtractedData) {
+function assignDates(
+  dates: string[],
+  ethField: string,
+  gregField: string,
+  result: ExtractedData,
+) {
   for (const d of dates) {
     const type = classifyDate(d);
     if (type === "ethiopian" && !(result as any)[ethField]) {
@@ -185,6 +203,7 @@ export function createEmptyResult(): ExtractedData {
     date_of_expiry_gregorian: "",
     fan_number: "",
     profile_image: "",
+    profile_image_color: "",
     barcode_image: "",
     barcode_value: "",
     qr_code_image: "",
@@ -192,20 +211,29 @@ export function createEmptyResult(): ExtractedData {
     nationality: "",
     nationality_amharic: "",
     fin_number: "",
-    address: { region: "", region_amharic: "", zone: "", zone_amharic: "", woreda: "", woreda_amharic: "" },
+    address: {
+      region: "",
+      region_amharic: "",
+      zone: "",
+      zone_amharic: "",
+      woreda: "",
+      woreda_amharic: "",
+    },
   };
 }
 
 export async function extractFrontSide(
   imageFile: File,
   result: ExtractedData,
-  onProgress?: (progress: number, status: string) => void
+  onProgress?: (progress: number, status: string) => void,
 ): Promise<void> {
   const img = await loadImage(imageFile);
   onProgress?.(5, "Front image loaded, initializing OCR...");
 
-  result.profile_image = extractRegion(img, 0.18, 0.16, 0.50, 0.40);
-  result.barcode_image = extractRegion(img, 0.18, 0.87, 0.58, 0.06);
+  result.profile_image = extractRegion(img, 0.31, 0.26, 0.359, 0.2);
+
+  
+  result.barcode_image = extractRegion(img, 0.318, 0.692, 0.32, 0.024);
 
   const worker = await Tesseract.createWorker("amh+eng", 1, {
     logger: (m) => {
@@ -216,26 +244,40 @@ export async function extractFrontSide(
   });
 
   onProgress?.(30, "Recognizing main text...");
-  const mainCanvas = extractRegionCanvas(img, 0, 0.53, 0.82, 0.40);
+  const mainCanvas = extractRegionCanvas(img, 0, 0.53, 0.82, 0.4);
   preprocessForOCR(mainCanvas);
   const mainResult = await worker.recognize(mainCanvas.toDataURL("image/png"));
   const mainText = mainResult.data.text;
   console.log("=== Front main text OCR ===\n", mainText);
 
-  const lines = mainText.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = mainText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   for (const line of lines) {
-    if (/[\u1200-\u137F]/.test(line) && !/\d/.test(line) && !line.includes("ወንድ") && !line.includes("ሴት") && !line.includes("ካርድ") && !line.includes("ቁጥር") && !line.includes("FAN") && !result.full_name_amharic) {
+    if (
+      /[\u1200-\u137F]/.test(line) &&
+      !/\d/.test(line) &&
+      !line.includes("ወንድ") &&
+      !line.includes("ሴት") &&
+      !line.includes("ካርድ") &&
+      !line.includes("ቁጥር") &&
+      !line.includes("FAN") &&
+      !result.full_name_amharic
+    ) {
       result.full_name_amharic = line;
       continue;
     }
-    if (/^[A-Za-z\s.'-]+$/.test(line) && line.length > 3 && !line.includes("FAN") && !line.includes("Male") && !line.includes("Female") && !result.full_name_english) {
+    if (
+      /^[A-Za-z\s.'-]+$/.test(line) &&
+      line.length > 3 &&
+      !line.includes("FAN") &&
+      !line.includes("Male") &&
+      !line.includes("Female") &&
+      !result.full_name_english
+    ) {
       result.full_name_english = line;
-      continue;
-    }
-    if (line.includes("ወንድ") || line.toLowerCase().includes("male")) {
-      result.sex = "Male";
-      result.sex_amharic = "ወንድ";
       continue;
     }
     if (line.includes("ሴት") || line.toLowerCase().includes("female")) {
@@ -243,14 +285,32 @@ export async function extractFrontSide(
       result.sex_amharic = "ሴት";
       continue;
     }
+    if (line.includes("ወንድ") || line.toLowerCase().includes("male")) {
+      result.sex = "Male";
+      result.sex_amharic = "ወንድ";
+      continue;
+    }
     const dates = findAllDates(line);
     if (dates.length > 0) {
       if (!result.date_of_birth_ethiopian && !result.date_of_birth_gregorian) {
-        assignDates(dates, "date_of_birth_ethiopian", "date_of_birth_gregorian", result);
+        assignDates(
+          dates,
+          "date_of_birth_ethiopian",
+          "date_of_birth_gregorian",
+          result,
+        );
         continue;
       }
-      if (!result.date_of_expiry_ethiopian && !result.date_of_expiry_gregorian) {
-        assignDates(dates, "date_of_expiry_ethiopian", "date_of_expiry_gregorian", result);
+      if (
+        !result.date_of_expiry_ethiopian &&
+        !result.date_of_expiry_gregorian
+      ) {
+        assignDates(
+          dates,
+          "date_of_expiry_ethiopian",
+          "date_of_expiry_gregorian",
+          result,
+        );
         continue;
       }
     }
@@ -261,7 +321,7 @@ export async function extractFrontSide(
   }
 
   onProgress?.(40, "Reading Date of Issue...");
-  const vertCanvas = extractAndRotateRegionCW(img, 0.83, 0.05, 0.17, 0.90);
+  const vertCanvas = extractAndRotateRegionCW(img, 0.83, 0.05, 0.17, 0.9);
   preprocessForOCR(vertCanvas);
   const vertResult = await worker.recognize(vertCanvas.toDataURL("image/png"));
   let vertText = vertResult.data.text;
@@ -270,7 +330,7 @@ export async function extractFrontSide(
   // Clean common OCR artifacts in vertical text
   // "12018/086/15" → "2018/06/15": remove stray leading "1" before 4-digit year, fix "0XX" → "0X"
   vertText = vertText.replace(/1(20\d{2})/g, "$1"); // "12018" → "2018", "12026" → "2026"
-  vertText = vertText.replace(/0(\d)\1/g, "0$1");   // "066" → "06", "088" → "08" (doubled digit)
+  vertText = vertText.replace(/0(\d)\1/g, "0$1"); // "066" → "06", "088" → "08" (doubled digit)
   vertText = vertText.replace(/0(\d{2})(?=[\/\-. ])/g, (match, digits) => {
     // "086" → "06" if first digit is 0-9 and second makes it >12 (not a valid month/day pair)
     const num = parseInt(match);
@@ -280,7 +340,12 @@ export async function extractFrontSide(
 
   const vertDates = findAllDates(vertText);
   if (vertDates.length > 0) {
-    assignDates(vertDates, "date_of_issue_ethiopian", "date_of_issue_gregorian", result);
+    assignDates(
+      vertDates,
+      "date_of_issue_ethiopian",
+      "date_of_issue_gregorian",
+      result,
+    );
   }
 
   if (!result.fan_number) {
@@ -294,13 +359,13 @@ export async function extractFrontSide(
 export async function extractBackSide(
   imageFile: File,
   result: ExtractedData,
-  onProgress?: (progress: number, status: string) => void
+  onProgress?: (progress: number, status: string) => void,
 ): Promise<void> {
   const img = await loadImage(imageFile);
   onProgress?.(55, "Back image loaded...");
 
   // QR code: large square in top portion
-  result.qr_code_image = extractRegion(img, 0.10, 0.05, 0.80, 0.55);
+  result.qr_code_image = extractRegion(img, 0.178, 0.25, 0.65, 0.296);
 
   const worker = await Tesseract.createWorker("amh+eng", 1, {
     logger: (m) => {
@@ -310,16 +375,16 @@ export async function extractBackSide(
     },
   });
 
-  // Text area below QR code - left side (phone, nationality, address)
+  // Text area below QR code - full width for address capture
   onProgress?.(65, "Recognizing back side text...");
-  const textCanvas = extractRegionCanvas(img, 0, 0.58, 0.60, 0.42);
+  const textCanvas = extractRegionCanvas(img, 0, 0.58, 1.0, 0.42);
   preprocessForOCR(textCanvas);
   const textResult = await worker.recognize(textCanvas.toDataURL("image/png"));
   const backText = textResult.data.text;
-  console.log("=== Back side left OCR ===\n", backText);
+  console.log("=== Back side OCR ===\n", backText);
 
   // Right side of back (FIN number area) - positioned next to phone number
-  const finCanvas = extractRegionCanvas(img, 0.50, 0.58, 0.50, 0.10);
+  const finCanvas = extractRegionCanvas(img, 0.5, 0.58, 0.5, 0.1);
   preprocessForOCR(finCanvas);
   const finResult = await worker.recognize(finCanvas.toDataURL("image/png"));
   const finText = finResult.data.text;
@@ -332,33 +397,55 @@ export async function extractBackSide(
     result.fin_number = finMatch[0].replace(/\s+/g, " ").trim();
   }
 
-  const lines = backText.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = backText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineLower = line.toLowerCase();
 
-    // Phone number - extract digits, allow trailing garbage
-    if ((lineLower.includes("phone") || line.includes("ስልክ")) && !result.phone_number) {
-      const phoneMatch = line.match(/0\d{9}/);
+    const phoneRegex = /(?:\+251|251|09|07)\d{8}/;
+
+    if (
+      (lineLower.includes("phone") || line.includes("ስልክ")) &&
+      !result.phone_number
+    ) {
+      const cleanedLine = line.replace(/\s/g, "");
+      const phoneMatch = cleanedLine.match(phoneRegex);
+
       if (phoneMatch) {
         result.phone_number = phoneMatch[0];
       } else if (i + 1 < lines.length) {
-        const nextMatch = lines[i + 1].match(/0\d{9}/);
+        const nextClean = lines[i + 1].replace(/\s/g, "");
+        const nextMatch = nextClean.match(phoneRegex);
         if (nextMatch) result.phone_number = nextMatch[0];
       }
+
       continue;
     }
 
-    // Standalone phone number line (may have trailing chars)
-    const phoneInLine = line.replace(/\s/g, "").match(/^(0\d{9})/);
-    if (phoneInLine && !result.phone_number) {
-      result.phone_number = phoneInLine[1];
+    // Standalone phone number
+    const cleaned = line.replace(/\s/g, "");
+    const standaloneMatch = cleaned.match(phoneRegex);
+
+    if (standaloneMatch && !result.phone_number) {
+      result.phone_number = standaloneMatch[0];
       continue;
     }
+
+
+
+
 
     // FIN number
-    if ((lineLower.includes("fin") || line.includes("ልዩ ቁጥር") || line.includes("ፊን")) && !result.fin_number) {
+    if (
+      (lineLower.includes("fin") ||
+        line.includes("ልዩ ቁጥር") ||
+        line.includes("ፊን")) &&
+      !result.fin_number
+    ) {
       const finMatch = line.match(/\d[\d\s]{10,}/);
       if (finMatch) {
         result.fin_number = finMatch[0].trim();
@@ -370,43 +457,69 @@ export async function extractBackSide(
     }
 
     // Nationality
-    if ((lineLower.includes("nationality") || line.includes("ዜግነት")) && !result.nationality) {
+    if (
+      (lineLower.includes("nationality") || line.includes("ዜግነት")) &&
+      !result.nationality
+    ) {
       if (lineLower.includes("ethiopian") || line.includes("ኢትዮጵያ")) {
         result.nationality = "Ethiopian";
-        result.nationality_amharic = "ኢትዮጵያዊ";
+        //  ኢትዮጵያዊ
+        result.nationality_amharic = "ኢትዮጵያ";
       } else if (i + 1 < lines.length) {
         const next = lines[i + 1];
-        if (next.toLowerCase().includes("ethiopian") || next.includes("ኢትዮጵያ")) {
+        if (
+          next.toLowerCase().includes("ethiopian") ||
+          next.includes("ኢትዮጵያ")
+        ) {
           result.nationality = "Ethiopian";
-          result.nationality_amharic = "ኢትዮጵያዊ";
+          result.nationality_amharic = "ኢትዮጵያ";
         }
       }
       continue;
     }
 
     // Direct nationality match
-    if ((lineLower.includes("ethiopian") || line.includes("ኢትዮጵያ")) && !result.nationality) {
+    if (
+      (lineLower.includes("ethiopian") || line.includes("ኢትዮጵያ")) &&
+      !result.nationality
+    ) {
       result.nationality = "Ethiopian";
       result.nationality_amharic = "ኢትዮጵያዊ";
       continue;
     }
 
     // Address
-    if ((lineLower.includes("address") || line.includes("አድራሻ")) && !result.address.region) {
+    if (
+      (lineLower.includes("address") || line.includes("አድራሻ")) &&
+      !result.address.region
+    ) {
       const addressLines: string[] = [];
       for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
         const addrLine = lines[j];
-        if (addrLine.toLowerCase().includes("fin") || addrLine.includes("ፊን") || addrLine.toLowerCase().includes("phone") || addrLine.includes("ስልክ")) break;
+        if (
+          addrLine.toLowerCase().includes("fin") ||
+          addrLine.includes("ፊን") ||
+          addrLine.toLowerCase().includes("phone") ||
+          addrLine.includes("ስልክ")
+        )
+          break;
         if (addrLine.length > 1) addressLines.push(addrLine);
       }
-      const englishLines = addressLines.filter(l => /^[A-Za-z0-9\s.,'\-\/]+$/.test(l) && l.length > 1);
-      const amharicLines = addressLines.filter(l => /[\u1200-\u137F]/.test(l));
+      const englishLines = addressLines.filter(
+        (l) => /^[A-Za-z0-9\s.,'\-\/]+$/.test(l) && l.length > 1,
+      );
+      const amharicLines = addressLines.filter((l) =>
+        /[\u1200-\u137F]/.test(l),
+      );
       if (englishLines.length >= 1) result.address.region = englishLines[0];
       if (englishLines.length >= 2) result.address.zone = englishLines[1];
       if (englishLines.length >= 3) result.address.woreda = englishLines[2];
-      if (amharicLines.length >= 1) result.address.region_amharic = amharicLines[0];
-      if (amharicLines.length >= 2) result.address.zone_amharic = amharicLines[1];
-      if (amharicLines.length >= 3) result.address.woreda_amharic = amharicLines[2];
+      if (amharicLines.length >= 1)
+        result.address.region_amharic = amharicLines[0];
+      if (amharicLines.length >= 2)
+        result.address.zone_amharic = amharicLines[1];
+      if (amharicLines.length >= 3)
+        result.address.woreda_amharic = amharicLines[2];
       continue;
     }
   }
@@ -414,10 +527,24 @@ export async function extractBackSide(
   await worker.terminate();
 }
 
+export async function extractColorID(
+  imageFile: File,
+  result: ExtractedData,
+  onProgress?: (progress: number, status: string) => void
+): Promise<void> {
+  const img = await loadImage(imageFile);
+  onProgress?.(90, "Extracting color profile...");
+  // Extract colored profile image (same region as front profile)
+  result.profile_image_color = extractRegion(img, 0.264, 0.19, 0.47, 0.286);
+  // result.profile_image_color = extractRegion(img, 0.262, 0.19, 0.50, 0.29);
+  // Extract colored QR code (same region as back QR)
+}
+
 export async function extractIDData(
   frontFile: File,
   backFile: File | null,
-  onProgress?: (progress: number, status: string) => void
+  colorFile: File | null,
+  onProgress?: (progress: number, status: string) => void,
 ): Promise<ExtractedData> {
   const result = createEmptyResult();
 
@@ -426,6 +553,10 @@ export async function extractIDData(
 
   if (backFile) {
     await extractBackSide(backFile, result, onProgress);
+  }
+
+  if (colorFile) {
+    await extractColorID(colorFile, result, onProgress);
   }
 
   onProgress?.(100, "Done!");
