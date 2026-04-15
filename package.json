@@ -1,6 +1,6 @@
 {
   "name": "vite_react_shadcn_ts",
-  "homepage" : "https://idconvertor.theamentrading.com/",
+  "homepage": "https://idconvertor.theamentrading.com/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -52,6 +52,7 @@
     "embla-carousel-react": "^8.6.0",
     "ethiopian-calendar-new": "^1.1.0",
     "input-otp": "^1.4.2",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
