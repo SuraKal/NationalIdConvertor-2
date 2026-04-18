@@ -33,119 +33,72 @@ export interface ExtractedData {
   };
 }
 
-function preprocessForOCR(canvas: HTMLCanvasElement): void {
+function preprocessForOCR(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = canvas.getContext("2d")!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  const width = canvas.width;
-  const height = canvas.height;
-
-  // Step 1: Grayscale + strong contrast + gamma correction
   for (let i = 0; i < data.length; i += 4) {
     let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    gray = Math.pow(gray / 255, 0.85) * 255; // slight gamma
-    gray = Math.min(255, Math.max(0, (gray - 70) * 2.4 + 30));
+    gray = Math.min(255, Math.max(0, (gray - 100) * 1.8 + 100));
     data[i] = data[i + 1] = data[i + 2] = gray;
   }
-
-  // Step 2: Simple adaptive threshold (helps with uneven lighting/shadows)
-  const tempData = new Uint8ClampedArray(data);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      let sum = 0;
-      let count = 0;
-      for (let dy = -3; dy <= 3; dy++) {
-        for (let dx = -3; dx <= 3; dx++) {
-          const nx = Math.min(Math.max(x + dx, 0), width - 1);
-          const ny = Math.min(Math.max(y + dy, 0), height - 1);
-          sum += tempData[(ny * width + nx) * 4];
-          count++;
-        }
-      }
-      const localAvg = sum / count;
-      const threshold = localAvg * 0.92; // slightly below average
-      const val = data[i] > threshold ? 255 : 0;
-      data[i] = data[i + 1] = data[i + 2] = val;
-    }
-  }
-
   ctx.putImageData(imageData, 0, 0);
+  return canvas;
 }
 
-async function autoOrientAndPreprocess(
+function extractRegion(
   img: HTMLImageElement,
-): Promise<HTMLCanvasElement> {
-  const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(img, 0, 0);
-
-  // Use OSD to detect orientation (0, 90, 180, 270)
-  const osdWorker = await Tesseract.createWorker("osd", 1, {
-    logger: () => {},
-  });
-
-  const osdResult = await osdWorker.recognize(canvas.toDataURL("image/png"));
-  const angle = osdResult.data.orientation || 0;
-  await osdWorker.terminate();
-
-  if (angle === 0) {
-    preprocessForOCR(canvas);
-    return canvas;
-  }
-
-  // Rotate the canvas
-  const isSideways = angle % 180 === 90;
-  const rotated = document.createElement("canvas");
-  rotated.width = isSideways ? canvas.height : canvas.width;
-  rotated.height = isSideways ? canvas.width : canvas.height;
-
-  const rCtx = rotated.getContext("2d")!;
-  rCtx.translate(rotated.width / 2, rotated.height / 2);
-  rCtx.rotate((angle * Math.PI) / 180);
-  rCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-
-  preprocessForOCR(rotated);
-  return rotated;
-}
-
-function extractRegionFromCanvas(
-  canvas: HTMLCanvasElement,
   xRatio: number,
   yRatio: number,
   wRatio: number,
   hRatio: number,
 ): string {
-  const crop = document.createElement("canvas");
-  const x = Math.floor(canvas.width * xRatio);
-  const y = Math.floor(canvas.height * yRatio);
-  const w = Math.floor(canvas.width * wRatio);
-  const h = Math.floor(canvas.height * hRatio);
-
-  crop.width = w;
-  crop.height = h;
-  crop.getContext("2d")!.drawImage(canvas, x, y, w, h, 0, 0, w, h);
-  return crop.toDataURL("image/png");
+  const canvas = document.createElement("canvas");
+  const x = Math.floor(img.naturalWidth * xRatio);
+  const y = Math.floor(img.naturalHeight * yRatio);
+  const w = Math.floor(img.naturalWidth * wRatio);
+  const h = Math.floor(img.naturalHeight * hRatio);
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+  return canvas.toDataURL("image/png");
 }
 
-function extractAndRotateRegionCWFromCanvas(
-  canvas: HTMLCanvasElement,
+function extractRegionCanvas(
+  img: HTMLImageElement,
   xRatio: number,
   yRatio: number,
   wRatio: number,
   hRatio: number,
 ): HTMLCanvasElement {
-  const x = Math.floor(canvas.width * xRatio);
-  const y = Math.floor(canvas.height * yRatio);
-  const w = Math.floor(canvas.width * wRatio);
-  const h = Math.floor(canvas.height * hRatio);
+  const canvas = document.createElement("canvas");
+  const x = Math.floor(img.naturalWidth * xRatio);
+  const y = Math.floor(img.naturalHeight * yRatio);
+  const w = Math.floor(img.naturalWidth * wRatio);
+  const h = Math.floor(img.naturalHeight * hRatio);
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d")!.drawImage(img, x, y, w, h, 0, 0, w, h);
+  return canvas;
+}
+
+function extractAndRotateRegionCW(
+  img: HTMLImageElement,
+  xRatio: number,
+  yRatio: number,
+  wRatio: number,
+  hRatio: number,
+): HTMLCanvasElement {
+  const x = Math.floor(img.naturalWidth * xRatio);
+  const y = Math.floor(img.naturalHeight * yRatio);
+  const w = Math.floor(img.naturalWidth * wRatio);
+  const h = Math.floor(img.naturalHeight * hRatio);
 
   const crop = document.createElement("canvas");
   crop.width = w;
   crop.height = h;
-  crop.getContext("2d")!.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+  crop.getContext("2d")!.drawImage(img, x, y, w, h, 0, 0, w, h);
 
   const rotated = document.createElement("canvas");
   rotated.width = h;
@@ -187,12 +140,30 @@ function findFAN(text: string): string {
   return match ? match[0] : "";
 }
 
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Classify a date as Ethiopian or Gregorian based on heuristics
 function classifyDate(date: string): "ethiopian" | "gregorian" {
+  // Dates with alphabetical month names (e.g., "2034/Mar/02") are Gregorian
   if (/[A-Za-z]{3,}/.test(date)) return "gregorian";
+  // Extract the year (first 4-digit number or last 4-digit number)
   const yearMatch = date.match(/\d{4}/);
   if (yearMatch) {
     const year = parseInt(yearMatch[0]);
-    if (year <= 2025) return "ethiopian"; // Updated threshold for 2026
+    // Ethiopian years are typically 7-8 years behind Gregorian
+    // Current Ethiopian year ~2018, so years <= 2020 are likely Ethiopian
+    if (year <= 2020) return "ethiopian";
     return "gregorian";
   }
   return "ethiopian";
@@ -256,55 +227,28 @@ export async function extractFrontSide(
   result: ExtractedData,
   onProgress?: (progress: number, status: string) => void,
 ): Promise<void> {
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(imageFile);
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = reject;
-    image.src = url;
-  });
+  const img = await loadImage(imageFile);
+  onProgress?.(5, "Front image loaded, initializing OCR...");
 
-  onProgress?.(5, "Front image loaded, auto-orienting...");
+  result.profile_image = extractRegion(img, 0.31, 0.26, 0.359, 0.2);
 
-  // Auto-orient + preprocess the full image (handles any rotation)
-  const orientedCanvas = await autoOrientAndPreprocess(img);
+  
+  result.barcode_image = extractRegion(img, 0.318, 0.692, 0.32, 0.024);
 
   const worker = await Tesseract.createWorker("amh+eng", 1, {
     logger: (m) => {
-      if (m.status === "recognizing text" && m.progress !== undefined) {
-        onProgress?.(10 + Math.floor(m.progress * 25), "Recognizing text...");
+      if (m.status === "recognizing text" && m.progress) {
+        onProgress?.(10 + m.progress * 20, "Loading OCR models...");
       }
     },
   });
 
-  // Main text area - full width, lower portion (after orientation)
-  onProgress?.(35, "Recognizing main front text...");
-  const mainCanvas = document.createElement("canvas");
-  mainCanvas.width = orientedCanvas.width;
-  mainCanvas.height = Math.floor(orientedCanvas.height * 0.48);
-  mainCanvas
-    .getContext("2d")!
-    .drawImage(
-      orientedCanvas,
-      0,
-      Math.floor(orientedCanvas.height * 0.5),
-      orientedCanvas.width,
-      mainCanvas.height,
-      0,
-      0,
-      mainCanvas.width,
-      mainCanvas.height,
-    );
-  preprocessForOCR(mainCanvas); // extra pass for safety
-
-  const mainResult = await worker.recognize(mainCanvas.toDataURL("image/png"), {
-    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT, // good for unstructured document text
-  });
+  onProgress?.(30, "Recognizing main text...");
+  const mainCanvas = extractRegionCanvas(img, 0, 0.53, 0.82, 0.4);
+  preprocessForOCR(mainCanvas);
+  const mainResult = await worker.recognize(mainCanvas.toDataURL("image/png"));
   const mainText = mainResult.data.text;
-  console.log("=== Front main text OCR (after auto-orient) ===\n", mainText);
+  console.log("=== Front main text OCR ===\n", mainText);
 
   const lines = mainText
     .split("\n")
@@ -325,10 +269,9 @@ export async function extractFrontSide(
       result.full_name_amharic = line;
       continue;
     }
-
     if (
       /^[A-Za-z\s.'-]+$/.test(line) &&
-      line.length > 4 &&
+      line.length > 3 &&
       !line.includes("FAN") &&
       !line.includes("Male") &&
       !line.includes("Female") &&
@@ -337,7 +280,6 @@ export async function extractFrontSide(
       result.full_name_english = line;
       continue;
     }
-
     if (line.includes("ሴት") || line.toLowerCase().includes("female")) {
       result.sex = "Female";
       result.sex_amharic = "ሴት";
@@ -348,7 +290,6 @@ export async function extractFrontSide(
       result.sex_amharic = "ወንድ";
       continue;
     }
-
     const dates = findAllDates(line);
     if (dates.length > 0) {
       if (!result.date_of_birth_ethiopian && !result.date_of_birth_gregorian) {
@@ -373,37 +314,29 @@ export async function extractFrontSide(
         continue;
       }
     }
-
     const fan = findFAN(line);
-    if (fan && fan.length >= 12 && !result.fan_number) {
+    if (fan && fan.length >= 14 && !result.fan_number) {
       result.fan_number = fan;
     }
   }
 
-  // Vertical Date of Issue (right side column) - now works after full auto-orient
-  onProgress?.(65, "Reading Date of Issue...");
-  const vertCanvas = extractAndRotateRegionCWFromCanvas(
-    orientedCanvas,
-    0.82,
-    0.04,
-    0.18,
-    0.92,
-  );
+  onProgress?.(40, "Reading Date of Issue...");
+  const vertCanvas = extractAndRotateRegionCW(img, 0.83, 0.05, 0.17, 0.9);
   preprocessForOCR(vertCanvas);
-
-  const vertResult = await worker.recognize(vertCanvas.toDataURL("image/png"), {
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-  });
+  const vertResult = await worker.recognize(vertCanvas.toDataURL("image/png"));
   let vertText = vertResult.data.text;
   console.log("=== Vertical text OCR (raw) ===\n", vertText);
 
-  // Clean common vertical OCR artifacts
-  vertText = vertText.replace(/1(20\d{2})/g, "$1");
-  vertText = vertText.replace(/0(\d)\1/g, "0$1");
+  // Clean common OCR artifacts in vertical text
+  // "12018/086/15" → "2018/06/15": remove stray leading "1" before 4-digit year, fix "0XX" → "0X"
+  vertText = vertText.replace(/1(20\d{2})/g, "$1"); // "12018" → "2018", "12026" → "2026"
+  vertText = vertText.replace(/0(\d)\1/g, "0$1"); // "066" → "06", "088" → "08" (doubled digit)
   vertText = vertText.replace(/0(\d{2})(?=[\/\-. ])/g, (match, digits) => {
+    // "086" → "06" if first digit is 0-9 and second makes it >12 (not a valid month/day pair)
     const num = parseInt(match);
     return num > 31 ? "0" + digits[1] : match;
   });
+  console.log("=== Vertical text OCR (cleaned) ===\n", vertText);
 
   const vertDates = findAllDates(vertText);
   if (vertDates.length > 0) {
@@ -428,80 +361,36 @@ export async function extractBackSide(
   result: ExtractedData,
   onProgress?: (progress: number, status: string) => void,
 ): Promise<void> {
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(imageFile);
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = reject;
-    image.src = url;
-  });
+  const img = await loadImage(imageFile);
+  onProgress?.(55, "Back image loaded...");
 
-  onProgress?.(70, "Back image loaded, auto-orienting...");
-
-  const orientedCanvas = await autoOrientAndPreprocess(img);
+  // QR code: large square in top portion
+  result.qr_code_image = extractRegion(img, 0.178, 0.25, 0.65, 0.296);
 
   const worker = await Tesseract.createWorker("amh+eng", 1, {
     logger: (m) => {
-      if (m.status === "recognizing text" && m.progress !== undefined) {
-        onProgress?.(75 + Math.floor(m.progress * 20), "Reading back side...");
+      if (m.status === "recognizing text" && m.progress) {
+        onProgress?.(60 + m.progress * 30, "Reading back side...");
       }
     },
   });
 
-  // Main back text area (below QR area)
-  onProgress?.(80, "Recognizing back side text...");
-  const textCanvas = document.createElement("canvas");
-  textCanvas.width = orientedCanvas.width;
-  textCanvas.height = Math.floor(orientedCanvas.height * 0.45);
-  textCanvas
-    .getContext("2d")!
-    .drawImage(
-      orientedCanvas,
-      0,
-      Math.floor(orientedCanvas.height * 0.55),
-      orientedCanvas.width,
-      textCanvas.height,
-      0,
-      0,
-      textCanvas.width,
-      textCanvas.height,
-    );
+  // Text area below QR code - full width for address capture
+  onProgress?.(65, "Recognizing back side text...");
+  const textCanvas = extractRegionCanvas(img, 0, 0.58, 1.0, 0.42);
   preprocessForOCR(textCanvas);
-
-  const textResult = await worker.recognize(textCanvas.toDataURL("image/png"), {
-    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
-  });
+  const textResult = await worker.recognize(textCanvas.toDataURL("image/png"));
   const backText = textResult.data.text;
-  console.log("=== Back side OCR (after auto-orient) ===\n", backText);
+  console.log("=== Back side OCR ===\n", backText);
 
-  // FIN number area (right side)
-  const finCanvas = document.createElement("canvas");
-  finCanvas.width = Math.floor(orientedCanvas.width * 0.5);
-  finCanvas.height = Math.floor(orientedCanvas.height * 0.12);
-  finCanvas
-    .getContext("2d")!
-    .drawImage(
-      orientedCanvas,
-      Math.floor(orientedCanvas.width * 0.5),
-      Math.floor(orientedCanvas.height * 0.55),
-      finCanvas.width,
-      finCanvas.height,
-      0,
-      0,
-      finCanvas.width,
-      finCanvas.height,
-    );
+  // Right side of back (FIN number area) - positioned next to phone number
+  const finCanvas = extractRegionCanvas(img, 0.5, 0.58, 0.5, 0.1);
   preprocessForOCR(finCanvas);
-
-  const finResult = await worker.recognize(finCanvas.toDataURL("image/png"), {
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-  });
+  const finResult = await worker.recognize(finCanvas.toDataURL("image/png"));
   const finText = finResult.data.text;
   console.log("=== Back side FIN OCR ===\n", finText);
 
+  // Extract FIN from right-side text
   const finDigits = finText.replace(/[^\d\s]/g, " ").trim();
   const finMatch = finDigits.match(/\d[\d\s]{10,}/);
   if (finMatch) {
@@ -517,7 +406,7 @@ export async function extractBackSide(
     const line = lines[i];
     const lineLower = line.toLowerCase();
 
-    const phoneRegex = /(?:\+251|251|09|07)\d{8,9}/;
+    const phoneRegex = /(?:\+251|251|09|07)\d{8}/;
 
     if (
       (lineLower.includes("phone") || line.includes("ስልክ")) &&
@@ -525,6 +414,7 @@ export async function extractBackSide(
     ) {
       const cleanedLine = line.replace(/\s/g, "");
       const phoneMatch = cleanedLine.match(phoneRegex);
+
       if (phoneMatch) {
         result.phone_number = phoneMatch[0];
       } else if (i + 1 < lines.length) {
@@ -532,14 +422,22 @@ export async function extractBackSide(
         const nextMatch = nextClean.match(phoneRegex);
         if (nextMatch) result.phone_number = nextMatch[0];
       }
+
       continue;
     }
 
-    const standaloneMatch = line.replace(/\s/g, "").match(phoneRegex);
+    // Standalone phone number
+    const cleaned = line.replace(/\s/g, "");
+    const standaloneMatch = cleaned.match(phoneRegex);
+
     if (standaloneMatch && !result.phone_number) {
       result.phone_number = standaloneMatch[0];
       continue;
     }
+
+
+
+
 
     // FIN number
     if (
@@ -565,6 +463,7 @@ export async function extractBackSide(
     ) {
       if (lineLower.includes("ethiopian") || line.includes("ኢትዮጵያ")) {
         result.nationality = "Ethiopian";
+        //  ኢትዮጵያዊ
         result.nationality_amharic = "ኢትዮጵያ";
       } else if (i + 1 < lines.length) {
         const next = lines[i + 1];
@@ -579,6 +478,7 @@ export async function extractBackSide(
       continue;
     }
 
+    // Direct nationality match
     if (
       (lineLower.includes("ethiopian") || line.includes("ኢትዮጵያ")) &&
       !result.nationality
@@ -594,7 +494,7 @@ export async function extractBackSide(
       !result.address.region
     ) {
       const addressLines: string[] = [];
-      for (let j = i + 1; j < Math.min(i + 12, lines.length); j++) {
+      for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
         const addrLine = lines[j];
         if (
           addrLine.toLowerCase().includes("fin") ||
@@ -605,25 +505,21 @@ export async function extractBackSide(
           break;
         if (addrLine.length > 1) addressLines.push(addrLine);
       }
-
       const englishLines = addressLines.filter(
         (l) => /^[A-Za-z0-9\s.,'\-\/]+$/.test(l) && l.length > 1,
       );
       const amharicLines = addressLines.filter((l) =>
         /[\u1200-\u137F]/.test(l),
       );
-
       if (englishLines.length >= 1) result.address.region = englishLines[0];
       if (englishLines.length >= 2) result.address.zone = englishLines[1];
       if (englishLines.length >= 3) result.address.woreda = englishLines[2];
-
       if (amharicLines.length >= 1)
         result.address.region_amharic = amharicLines[0];
       if (amharicLines.length >= 2)
         result.address.zone_amharic = amharicLines[1];
       if (amharicLines.length >= 3)
         result.address.woreda_amharic = amharicLines[2];
-
       continue;
     }
   }
@@ -634,35 +530,14 @@ export async function extractBackSide(
 export async function extractColorID(
   imageFile: File,
   result: ExtractedData,
-  onProgress?: (progress: number, status: string) => void,
+  onProgress?: (progress: number, status: string) => void
 ): Promise<void> {
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    const url = URL.createObjectURL(imageFile);
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = reject;
-    image.src = url;
-  });
-
-  onProgress?.(95, "Extracting color profile...");
-  // Note: Color extraction doesn't need OCR or orientation
-  result.profile_image_color = extractRegionFromCanvas(
-    // For color we use original image (no need for oriented)
-    (() => {
-      const c = document.createElement("canvas");
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      c.getContext("2d")!.drawImage(img, 0, 0);
-      return c;
-    })(),
-    0.26,
-    0.19,
-    0.48,
-    0.29,
-  );
+  const img = await loadImage(imageFile);
+  onProgress?.(90, "Extracting color profile...");
+  // Extract colored profile image (same region as front profile)
+  result.profile_image_color = extractRegion(img, 0.264, 0.19, 0.47, 0.286);
+  // result.profile_image_color = extractRegion(img, 0.262, 0.19, 0.50, 0.29);
+  // Extract colored QR code (same region as back QR)
 }
 
 export async function extractIDData(
@@ -674,7 +549,7 @@ export async function extractIDData(
   const result = createEmptyResult();
 
   await extractFrontSide(frontFile, result, onProgress);
-  onProgress?.(68, "Front side complete.");
+  onProgress?.(50, "Front side complete.");
 
   if (backFile) {
     await extractBackSide(backFile, result, onProgress);
@@ -684,6 +559,6 @@ export async function extractIDData(
     await extractColorID(colorFile, result, onProgress);
   }
 
-  onProgress?.(100, "ID extraction completed!");
+  onProgress?.(100, "Done!");
   return result;
 }
