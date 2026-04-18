@@ -20,7 +20,14 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter
+        future={{
+          v7_startTransition: true,     // This silences the warning
+          // You can also add other common flags for full v7 compatibility:
+          // v7_relativeSplatPath: true,
+          // v7_fetcherPersist: true,
+          // v7_normalizeFormMethod: true,
+        }}>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
