@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { FileText, Download, LogOut, ScanLine, Wallet, Shield } from "lucide-react";
 import WalletTopUp from "@/components/WalletTopUp";
 
@@ -14,7 +14,7 @@ const Dashboard = () => {
   const [walletBalance, setWalletBalance] = useState(0);
   const [totalDownloads, setTotalDownloads] = useState(0);
   const [profileName, setProfileName] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     if (!loading && !user) {
@@ -26,28 +26,11 @@ const Dashboard = () => {
     if (!user) return;
 
     const fetchData = async () => {
-      const [{ count }, { data: profile }, { data: roleData }] = await Promise.all([
-        supabase
-          .from("downloads")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id),
-        supabase
-          .from("profiles")
-          .select("name, wallet_balance, total_downloads")
-          .eq("user_id", user.id)
-          .single(),
-        supabase
-          .from("user_roles" as any)
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "admin")
-          .maybeSingle(),
-      ]);
-      setDownloadCount(count ?? 0);
-      setWalletBalance(profile?.wallet_balance ?? 0);
-      setTotalDownloads(profile?.total_downloads ?? 0);
-      setProfileName(profile?.name || user.user_metadata?.name || "User");
-      setIsAdmin(!!roleData);
+      const data = await api.getDashboard();
+      setDownloadCount(data.downloadCount ?? 0);
+      setWalletBalance(data.profile.wallet_balance ?? 0);
+      setTotalDownloads(data.profile.total_downloads ?? 0);
+      setProfileName(data.profile.name || "User");
     };
 
     fetchData();
@@ -104,7 +87,7 @@ const Dashboard = () => {
             <CardContent>
               <div className="flex items-center gap-3">
                 <Download className="h-8 w-8 text-primary" />
-                <span className="text-3xl font-bold text-foreground">{totalDownloads}</span>
+                <span className="text-3xl font-bold text-foreground">{downloadCount || totalDownloads}</span>
               </div>
             </CardContent>
           </Card>

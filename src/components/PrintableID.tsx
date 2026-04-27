@@ -5,8 +5,9 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Printer, Download } from "lucide-react";
 import type { ExtractedData } from "@/lib/ocr";
-import { toGregorian, toEthiopian } from "ethiopian-calendar-new";
-import { supabase } from "@/integrations/supabase/client";
+import { toGregorian } from "ethiopian-calendar-new";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface PrintableIDProps {
@@ -107,6 +108,7 @@ function drawTextOnCanvasBold(
 }
 
 export function PrintableID({ data }: PrintableIDProps) {
+  const { refreshUser } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
   const [useColorPhoto, setUseColorPhoto] = useState(false);
@@ -456,72 +458,20 @@ export function PrintableID({ data }: PrintableIDProps) {
     templateImg.src = TEMPLATE_URL;
   }, [data, useColorPhoto]);
 
+  const consumeCredit = async (fileName: string) => {
+    const result = await api.consumeDownload(fileName);
+    await refreshUser();
+    return result.role === "admin"
+      ? "Downloaded!"
+      : `Downloaded! 1 credit deducted. Remaining credits: ${result.wallet_balance}`;
+  };
+
   const handlePrint = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Please sign in to print.");
-        return;
-      }
-
-      // Check if user is admin
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-      const isAdmin = !!roleData;
-
-      if (!isAdmin) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("wallet_balance, total_downloads")
-          .eq("user_id", user.id)
-          .single();
-
-        if (!profile || profile.wallet_balance < 1) {
-          toast.error("Insufficient credits. Please top up your wallet.");
-          return;
-        }
-
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({
-            wallet_balance: profile.wallet_balance - 1,
-            total_downloads: (profile.total_downloads ?? 0) + 1,
-          })
-          .eq("user_id", user.id);
-
-        if (updateError) {
-          toast.error("Failed to process print.");
-          console.error(updateError);
-          return;
-        }
-      } else {
-        // Admin: just increment total_downloads
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("total_downloads")
-          .eq("user_id", user.id)
-          .single();
-        if (profile) {
-          await supabase
-            .from("profiles")
-            .update({ total_downloads: (profile.total_downloads ?? 0) + 1 })
-            .eq("user_id", user.id);
-        }
-      }
-
-      await supabase.from("downloads").insert({
-        user_id: user.id,
-        file_name: "fayda-id-card-print.png",
-      });
+      const successMessage = await consumeCredit("fayda-id-card-print.png");
 
       const dataUrl = canvas.toDataURL("image/png");
       const printWindow = window.open("", "_blank");
@@ -548,10 +498,10 @@ export function PrintableID({ data }: PrintableIDProps) {
     `);
       printWindow.document.close();
 
-      toast.success(isAdmin ? "Printing!" : "Printing! 1 credit deducted.");
+      toast.success(successMessage.replace("Downloaded!", "Printing!"));
     } catch (err) {
       console.error("Failed to print:", err);
-      toast.error("Print failed.");
+      toast.error(err instanceof Error ? err.message : "Print failed.");
     }
   };
 
@@ -560,67 +510,7 @@ export function PrintableID({ data }: PrintableIDProps) {
     if (!canvas) return;
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Please sign in to download.");
-        return;
-      }
-
-      // Check if user is admin
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-      const isAdmin = !!roleData;
-
-      if (!isAdmin) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("wallet_balance, total_downloads")
-          .eq("user_id", user.id)
-          .single();
-
-        if (!profile || profile.wallet_balance < 1) {
-          toast.error("Insufficient credits. Please top up your wallet.");
-          return;
-        }
-
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({
-            wallet_balance: profile.wallet_balance - 1,
-            total_downloads: (profile.total_downloads ?? 0) + 1,
-          })
-          .eq("user_id", user.id);
-
-        if (updateError) {
-          toast.error("Failed to process download.");
-          console.error(updateError);
-          return;
-        }
-      } else {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("total_downloads")
-          .eq("user_id", user.id)
-          .single();
-        if (profile) {
-          await supabase
-            .from("profiles")
-            .update({ total_downloads: (profile.total_downloads ?? 0) + 1 })
-            .eq("user_id", user.id);
-        }
-      }
-
-      // Track download
-      await supabase.from("downloads").insert({
-        user_id: user.id,
-        file_name: "fayda-id-card.png",
-      });
+      const successMessage = await consumeCredit("fayda-id-card.png");
 
       // Trigger actual download
       const link = document.createElement("a");
@@ -628,10 +518,10 @@ export function PrintableID({ data }: PrintableIDProps) {
       link.href = canvas.toDataURL("image/png");
       link.click();
 
-      toast.success(isAdmin ? "Downloaded!" : "Downloaded! 1 credit deducted.");
+      toast.success(successMessage);
     } catch (err) {
       console.error("Failed to download:", err);
-      toast.error("Download failed.");
+      toast.error(err instanceof Error ? err.message : "Download failed.");
     }
   };
 

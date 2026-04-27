@@ -8,20 +8,11 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
+import type { PackageItem } from "@/lib/api-types";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Pencil, Trash2, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-
-interface PackageItem {
-  id: string;
-  name: string;
-  credits: number;
-  price: number;
-  currency: string;
-  is_active: boolean;
-  created_at: string;
-}
 
 const PackageManagement = () => {
   const { toast } = useToast();
@@ -37,11 +28,8 @@ const PackageManagement = () => {
 
   const fetchPackages = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("packages")
-      .select("*")
-      .order("credits", { ascending: true });
-    if (data) setPackages(data as PackageItem[]);
+    const { packages } = await api.getPackages();
+    setPackages(packages);
     setLoading(false);
   };
 
@@ -72,28 +60,30 @@ const PackageManagement = () => {
   const handleSave = async () => {
     const name = `${credits} PDFs - ${price} ${currency}`;
     const payload = { name, credits, price, currency, is_active: isActive };
-    const { error } = editId
-      ? await supabase.from("packages").update(payload).eq("id", editId)
-      : await supabase.from("packages").insert(payload);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      if (editId) {
+        await api.updatePackage(editId, payload);
+      } else {
+        await api.createPackage(payload);
+      }
       toast({ title: editId ? "Updated" : "Created", description: `Package ${editId ? "updated" : "created"}.` });
       setShowDialog(false);
       resetForm();
       fetchPackages();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 
   const handleDelete = async () => {
     if (!deleteItem) return;
-    const { error } = await supabase.from("packages").delete().eq("id", deleteItem.id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.deletePackage(deleteItem.id);
       toast({ title: "Deleted", description: "Package removed." });
       setDeleteItem(null);
       fetchPackages();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 

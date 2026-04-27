@@ -8,17 +8,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
+import type { PaymentMethod } from "@/lib/api-types";
 import { CreditCard, Pencil, Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface PaymentMethod {
-  id: string;
-  name: string;
-  account_holder_name: string;
-  account_number: string;
-  created_at: string;
-}
 
 const PaymentMethods = () => {
   const { toast } = useToast();
@@ -36,8 +29,8 @@ const PaymentMethods = () => {
 
   const fetchMethods = async () => {
     setLoading(true);
-    const { data } = await supabase.from("payment_methods").select("*").order("created_at", { ascending: false });
-    if (data) setMethods(data);
+    const { paymentMethods } = await api.getPaymentMethods();
+    setMethods(paymentMethods);
     setLoading(false);
   };
 
@@ -67,34 +60,30 @@ const PaymentMethods = () => {
     setSaving(true);
     const payload = { name, account_holder_name: holderName, account_number: accountNumber };
 
-    if (editId) {
-      const { error } = await supabase.from("payment_methods").update(payload).eq("id", editId);
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-      } else {
+    try {
+      if (editId) {
+        await api.updatePaymentMethod(editId, payload);
         toast({ title: "Updated", description: "Payment method updated." });
-      }
-    } else {
-      const { error } = await supabase.from("payment_methods").insert(payload);
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
+        await api.createPaymentMethod(payload);
         toast({ title: "Created", description: "Payment method added." });
       }
+      setShowForm(false);
+      fetchMethods();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    setShowForm(false);
-    fetchMethods();
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const { error } = await supabase.from("payment_methods").delete().eq("id", deleteTarget.id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.deletePaymentMethod(deleteTarget.id);
       toast({ title: "Deleted", description: "Payment method removed." });
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     }
     setDeleteTarget(null);
     fetchMethods();

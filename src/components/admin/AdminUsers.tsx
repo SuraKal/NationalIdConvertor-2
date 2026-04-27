@@ -8,37 +8,28 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
+import type { AuthUser } from "@/lib/api-types";
 import { Pencil, Trash2, Shield, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface UserProfile {
-  id: string;
-  user_id: string;
-  name: string;
-  email: string;
-  wallet_balance: number;
-  total_downloads: number;
-  created_at: string;
-}
-
 interface AdminUsersProps {
-  users: UserProfile[];
+  users: AuthUser[];
   type: "admin" | "regular";
   onRefresh: () => void;
 }
 
 const AdminUsers = ({ users, type, onRefresh }: AdminUsersProps) => {
   const { toast } = useToast();
-  const [editUser, setEditUser] = useState<UserProfile | null>(null);
+  const [editUser, setEditUser] = useState<AuthUser | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editWallet, setEditWallet] = useState(0);
-  const [deleteUser, setDeleteUser] = useState<UserProfile | null>(null);
+  const [deleteUser, setDeleteUser] = useState<AuthUser | null>(null);
 
   const isRegular = type === "regular";
 
-  const openEdit = (u: UserProfile) => {
+  const openEdit = (u: AuthUser) => {
     setEditUser(u);
     setEditName(u.name);
     setEditEmail(u.email);
@@ -47,27 +38,29 @@ const AdminUsers = ({ users, type, onRefresh }: AdminUsersProps) => {
 
   const handleUpdate = async () => {
     if (!editUser) return;
-    const updates: any = { name: editName, email: editEmail };
-    if (isRegular) updates.wallet_balance = editWallet;
-    const { error } = await supabase.from("profiles").update(updates).eq("id", editUser.id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.updateUser(editUser.id, {
+        name: editName,
+        email: editEmail,
+        ...(isRegular ? { wallet_balance: editWallet } : {}),
+      });
       toast({ title: "Updated", description: "User profile updated." });
       setEditUser(null);
       onRefresh();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 
   const handleDelete = async () => {
     if (!deleteUser) return;
-    const { error } = await supabase.from("profiles").delete().eq("id", deleteUser.id);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.deleteUser(deleteUser.id);
       toast({ title: "Deleted", description: "User profile removed." });
       setDeleteUser(null);
       onRefresh();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -166,8 +159,5 @@ const AdminUsers = ({ users, type, onRefresh }: AdminUsersProps) => {
     </>
   );
 };
-
-
-
 
 export default AdminUsers;

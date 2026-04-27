@@ -5,36 +5,12 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { api, getErrorMessage } from "@/lib/api";
+import type { PackageItem, PaymentMethod, PaymentRequest } from "@/lib/api-types";
 import { CreditCard, Send, Clock, CheckCircle, XCircle, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-
-interface PaymentMethod {
-  id: string;
-  name: string;
-  account_holder_name: string;
-  account_number: string;
-}
-
-interface PackageItem {
-  id: string;
-  name: string;
-  credits: number;
-  price: number;
-  currency: string;
-}
-
-interface PaymentRequest {
-  id: string;
-  transaction_number: string;
-  amount: number;
-  status: string;
-  created_at: string;
-  payment_method_id: string;
-  package_id: string | null;
-}
 
 const WalletTopUp = () => {
   const { user } = useAuth();
@@ -53,14 +29,14 @@ const WalletTopUp = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const [{ data: m }, { data: p }, { data: r }] = await Promise.all([
-      supabase.from("payment_methods").select("*").order("created_at", { ascending: false }),
-      supabase.from("packages").select("*").eq("is_active", true).order("credits", { ascending: true }),
-      supabase.from("payment_requests").select("*").order("created_at", { ascending: false }),
+    const [{ paymentMethods }, { packages: packageItems }, { paymentRequests }] = await Promise.all([
+      api.getPaymentMethods(),
+      api.getPackages(),
+      api.getPaymentRequests(),
     ]);
-    if (m) setMethods(m);
-    if (p) setPackages(p as PackageItem[]);
-    if (r) setRequests(r as PaymentRequest[]);
+    setMethods(paymentMethods);
+    setPackages(packageItems.filter((pkg) => pkg.is_active));
+    setRequests(paymentRequests);
     setLoading(false);
   };
 
@@ -80,24 +56,24 @@ const WalletTopUp = () => {
   const handleSubmit = async () => {
     if (!selectedMethod || !selectedPackage || !transactionNumber.trim() || !user) return;
     setSending(true);
-    const { error } = await supabase.from("payment_requests").insert({
-      user_id: user.id,
-      payment_method_id: selectedMethod.id,
-      package_id: selectedPackage.id,
-      transaction_number: transactionNumber.trim(),
-      amount: selectedPackage.credits,
-    } as any);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.createPaymentRequest({
+        payment_method_id: selectedMethod.id,
+        package_id: selectedPackage.id,
+        transaction_number: transactionNumber.trim(),
+        amount: selectedPackage.credits,
+      });
       toast({ title: "Sent", description: "Your payment verification request has been submitted." });
       setSelectedMethod(null);
       setSelectedPackage(null);
       setTransactionNumber("");
       setStep("packages");
       fetchData();
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   };
 
   const getStatusBadge = (status: string) => {

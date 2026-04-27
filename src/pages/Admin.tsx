@@ -10,7 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
+import type { AuthUser } from "@/lib/api-types";
 import { Users, Wallet, Download, UserPlus, ArrowLeft } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -20,23 +21,12 @@ import PaymentRequests from "@/components/PaymentRequests";
 import PackageManagement from "@/components/PackageManagement";
 import { useToast } from "@/hooks/use-toast";
 
-interface UserProfile {
-  id: string;
-  user_id: string;
-  name: string;
-  email: string;
-  wallet_balance: number;
-  total_downloads: number;
-  created_at: string;
-}
-
 const Admin = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [adminUserIds, setAdminUserIds] = useState<Set<string>>(new Set());
+  const [users, setUsers] = useState<AuthUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -51,25 +41,15 @@ const Admin = () => {
   }, [user, loading]);
 
   const checkAdmin = async () => {
-    const { data } = await supabase
-      .from("user_roles").select("role").eq("user_id", user!.id).eq("role", "admin").maybeSingle();
-    if (!data) { navigate("/dashboard"); return; }
+    if (user?.role !== "admin") { navigate("/dashboard"); return; }
     setIsAdmin(true);
     fetchUsers();
   };
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
-    const [{ data: profiles }, { data: roles }] = await Promise.all([
-      supabase.from("profiles").select("*"),
-      supabase.from("user_roles").select("user_id, role"),
-    ]);
-    if (profiles) setUsers(profiles);
-    if (roles) {
-      const ids = new Set<string>();
-      roles.forEach((r: any) => { if (r.role === "admin") ids.add(r.user_id); });
-      setAdminUserIds(ids);
-    }
+    const { users } = await api.getUsers();
+    setUsers(users);
     setLoadingUsers(false);
   };
 
@@ -80,24 +60,25 @@ const Admin = () => {
     }
     setCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-user", {
-        body: { name: newName, email: newEmail, password: newPassword, role: newRole },
+      await api.createUser({
+        name: newName,
+        email: newEmail,
+        password: newPassword,
+        role: newRole,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
       toast({ title: "Created", description: `${newRole === "admin" ? "Admin" : "User"} created successfully.` });
       setShowCreate(false);
       setNewName(""); setNewEmail(""); setNewPassword(""); setNewRole("user");
       fetchUsers();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
     } finally { setCreating(false); }
   };
 
   if (loading || isAdmin === null) return null;
 
-  const adminUsers = users.filter(u => adminUserIds.has(u.user_id));
-  const regularUsers = users.filter(u => !adminUserIds.has(u.user_id));
+  const adminUsers = users.filter((u) => u.role === "admin");
+  const regularUsers = users.filter((u) => u.role !== "admin");
   const totalCredits = users.reduce((s, u) => s + u.wallet_balance, 0);
   const totalDl = users.reduce((s, u) => s + u.total_downloads, 0);
 

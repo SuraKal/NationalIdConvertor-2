@@ -1,56 +1,81 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
-  ReactNode,
+  type ReactNode,
 } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { api, clearStoredToken, getStoredToken, storeToken } from "@/lib/api";
+import type { AuthUser } from "@/lib/api-types";
 
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
+  token: string | null;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
-  session: null,
   user: null,
   loading: true,
+  token: null,
+  signIn: async () => {},
   signOut: async () => {},
+  refreshUser: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(getStoredToken());
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+  const refreshUser = useCallback(async () => {
+    const currentToken = getStoredToken();
+    if (!currentToken) {
+      setUser(null);
+      setToken(null);
       setLoading(false);
-    });
+      return;
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    try {
+      const response = await api.me();
+      setUser(response.user);
+      setToken(currentToken);
+    } catch {
+      clearStoredToken();
+      setUser(null);
+      setToken(null);
+    } finally {
       setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    }
   }, []);
 
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
+
+  const signIn = async (email: string, password: string) => {
+    const response = await api.login({ email, password });
+    storeToken(response.token);
+    setToken(response.token);
+    setUser(response.user);
+  };
+
   const signOut = async () => {
-    await supabase.auth.signOut();
+    clearStoredToken();
+    setToken(null);
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, loading, signOut }}
+      value={{ user, loading, token, signIn, signOut, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

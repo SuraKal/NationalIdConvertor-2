@@ -10,7 +10,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
 import { FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,21 +30,14 @@ const Register = () => {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-        emailRedirectTo: window.location.origin,
-      },
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      await api.register({ name, email, password });
       toast.success("Account created! You can now sign in.");
       navigate("/login");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 

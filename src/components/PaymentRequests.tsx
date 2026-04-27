@@ -7,55 +7,23 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getErrorMessage } from "@/lib/api";
+import type { PaymentRequest } from "@/lib/api-types";
 import { CheckCircle, XCircle, Clock, Receipt, Undo2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
-interface PaymentRequest {
-  id: string;
-  user_id: string;
-  payment_method_id: string;
-  transaction_number: string;
-  amount: number;
-  status: string;
-  created_at: string;
-  reviewed_at: string | null;
-}
-
-interface Profile {
-  user_id: string;
-  name: string;
-  email: string;
-}
-
 const PaymentRequests = () => {
   const { toast } = useToast();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
-  const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map());
-  const [methods, setMethods] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [actionTarget, setActionTarget] = useState<{ request: PaymentRequest; action: "approve" | "reject" | "reverse" } | null>(null);
   const [processing, setProcessing] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
-    const [{ data: reqs }, { data: profs }, { data: meths }] = await Promise.all([
-      supabase.from("payment_requests").select("*").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("user_id, name, email"),
-      supabase.from("payment_methods").select("id, name"),
-    ]);
-    if (reqs) setRequests(reqs as PaymentRequest[]);
-    if (profs) {
-      const map = new Map<string, Profile>();
-      profs.forEach((p) => map.set(p.user_id, p));
-      setProfiles(map);
-    }
-    if (meths) {
-      const map = new Map<string, string>();
-      meths.forEach((m) => map.set(m.id, m.name));
-      setMethods(map);
-    }
+    const { paymentRequests } = await api.getPaymentRequests();
+    setRequests(paymentRequests);
     setLoading(false);
   };
 
@@ -66,68 +34,21 @@ const PaymentRequests = () => {
     const { request, action } = actionTarget;
     setProcessing(true);
 
-    if (action === "approve") {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("wallet_balance")
-        .eq("user_id", request.user_id)
-        .single();
-
-      if (profile) {
-        const newBalance = profile.wallet_balance + request.amount;
-        const { error: updateErr } = await supabase
-          .from("profiles")
-          .update({ wallet_balance: newBalance })
-          .eq("user_id", request.user_id);
-        if (updateErr) {
-          toast({ title: "Error", description: updateErr.message, variant: "destructive" });
-          setProcessing(false);
-          return;
-        }
-      }
-    }
-
-    if (action === "reverse") {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("wallet_balance")
-        .eq("user_id", request.user_id)
-        .single();
-
-      if (profile) {
-        const newBalance = Math.max(0, profile.wallet_balance - request.amount);
-        const { error: updateErr } = await supabase
-          .from("profiles")
-          .update({ wallet_balance: newBalance })
-          .eq("user_id", request.user_id);
-        if (updateErr) {
-          toast({ title: "Error", description: updateErr.message, variant: "destructive" });
-          setProcessing(false);
-          return;
-        }
-      }
-    }
-
-    const newStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : "reversed";
-    const { error } = await supabase
-      .from("payment_requests")
-      .update({ status: newStatus, reviewed_at: new Date().toISOString() } as any)
-      .eq("id", request.id);
-
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await api.actOnPaymentRequest(request.id, action);
       const messages: Record<string, { title: string; description: string }> = {
         approve: { title: "Approved", description: `${request.amount} credits added to user's wallet.` },
         reject: { title: "Rejected", description: "Payment request rejected." },
         reverse: { title: "Reversed", description: `${request.amount} credits deducted from user's wallet.` },
       };
       toast(messages[action]);
+    } catch (error) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setProcessing(false);
+      setActionTarget(null);
+      fetchData();
     }
-
-    setProcessing(false);
-    setActionTarget(null);
-    fetchData();
   };
 
   const getStatusBadge = (status: string) => {
@@ -179,16 +100,15 @@ const PaymentRequests = () => {
                   </TableRow>
                 ) : (
                   requests.map((r) => {
-                    const profile = profiles.get(r.user_id);
                     return (
                       <TableRow key={r.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{profile?.name || "Unknown"}</p>
-                            <p className="text-xs text-muted-foreground">{profile?.email || ""}</p>
+                            <p className="font-medium">{r.user_name || "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">{r.user_email || ""}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{methods.get(r.payment_method_id) || "Unknown"}</TableCell>
+                        <TableCell>{r.payment_method_name || "Unknown"}</TableCell>
                         <TableCell className="font-mono text-sm">{r.transaction_number}</TableCell>
                         <TableCell className="text-center">{r.amount}</TableCell>
                         <TableCell className="text-center">{getStatusBadge(r.status)}</TableCell>

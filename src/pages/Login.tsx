@@ -10,12 +10,14 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { getErrorMessage } from "@/lib/api";
 import { FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,17 +27,14 @@ const Login = () => {
     if (!email || !password) return;
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      await signIn(email, password);
       toast.success("Logged in successfully!");
       navigate("/dashboard");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,15 +95,15 @@ const Login = () => {
             <Link to="/register" className="text-primary hover:underline">
               Register
             </Link>
-            <div className="mt-3 text-center">
-              <Link
-                to="/"
-                className="text-sm text-primary hover:underline"
-              >
-                Back to home
-              </Link>
-            </div>
           </p>
+          <div className="mt-3 text-center">
+            <Link
+              to="/"
+              className="text-sm text-primary hover:underline"
+            >
+              Back to home
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { FileText, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -23,22 +23,18 @@ const ForgotPassword = () => {
     if (!email) return;
 
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("reset-password-otp", {
-      body: { action: "send", email },
-    });
-    setLoading(false);
-
-    if (error) {
+    try {
+      const data = await api.sendPasswordResetOtp(email);
+      if (data?.otp) {
+        toast.success(`Your OTP code is: ${data.otp}`, { duration: 15000 });
+      }
+      setStep("otp");
+      toast.info("Enter the OTP code to proceed.");
+    } catch {
       toast.error("Failed to send OTP. Please try again.");
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    if (data?.otp) {
-      toast.success(`Your OTP code is: ${data.otp}`, { duration: 15000 });
-    }
-
-    setStep("otp");
-    toast.info("Enter the OTP code to proceed.");
   };
 
   const handleVerifyAndReset = async (e: React.FormEvent) => {
@@ -60,18 +56,17 @@ const ForgotPassword = () => {
     }
 
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("reset-password-otp", {
-      body: { action: "verify", email, otp, newPassword },
-    });
-    setLoading(false);
-
-    if (error || data?.error) {
-      toast.error(data?.error || "Failed to reset password");
-      return;
+    try {
+      await api.resetPassword({ email, otp, newPassword });
+      toast.success("Password updated successfully!");
+      navigate("/login");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to reset password",
+      );
+    } finally {
+      setLoading(false);
     }
-
-    toast.success("Password updated successfully!");
-    navigate("/login");
   };
 
   return (
