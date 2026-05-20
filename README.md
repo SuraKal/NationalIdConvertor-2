@@ -38,16 +38,17 @@ Install dependencies:
 npm install
 ```
 
-Start the API:
-
-```sh
-npm run api
-```
-
-Start the frontend:
+Start both the API and frontend together:
 
 ```sh
 npm run dev
+```
+
+If you want them separately:
+
+```sh
+npm run api
+npm run dev:client
 ```
 
 The Vite dev server proxies `/api` to `http://localhost:3001`.

@@ -5,7 +5,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.js",
+    "dev:client": "vite",
     "api": "node server/app.js",
     "build": "vite build",
     "build:dev": "vite build --mode development",
